@@ -157,9 +157,57 @@ def check_yuldong(site_cfg, target_dates):
 
 
 def check_cheonwangsan(site_cfg, target_dates):
-    """천왕산 가족캠핑장: 서울시 공공서비스예약 (yeyak.seoul.go.kr)"""
-    # NOTE: 엔드포인트 분석 완료 후 구현 예정
-    raise NotImplementedError("천왕산 체커는 분석 완료 후 활성화됩니다")
+    """천왕산 가족캠핑장: NOL(야놀자) stay tRPC API (무인증 JSON)
+    1차로 달력(가벼움)에서 판매중 날짜를 거르고,
+    판매중인 날짜만 상세 조회로 잔여 데크를 센다."""
+    stay_id = 10070087
+    base = "https://nol.yanolja.com/stay/api/trpc"
+    headers = {"User-Agent": UA}
+    nights = 1
+    d_min, d_max = min(target_dates), max(target_dates)
+    checkout = (datetime.strptime(d_min, "%Y-%m-%d")
+                + timedelta(days=nights)).strftime("%Y-%m-%d")
+    cal_input = json.dumps({"json": {"stayId": stay_id, "query": {
+        "checkInDate": d_min, "checkOutDate": checkout,
+        "from": d_min[:8] + "01", "to": d_max[:8] + "31",
+        "adultPax": 2, "childrenAges": []}}})
+    r = requests.get(base + "/stay.properties.calendar",
+                     params={"input": cal_input}, headers=headers, timeout=30)
+    r.raise_for_status()
+    data = r.json()["result"]["data"]["json"]
+    on_sale = {d["date"] for d in data.get("dates", []) if d.get("onSale")}
+
+    results = {}
+    for d in target_dates:
+        if d not in on_sale:
+            results[d] = {"status": FULL, "detail": "매진(판매 날짜에 없음)"}
+            continue
+        co = (datetime.strptime(d, "%Y-%m-%d")
+              + timedelta(days=nights)).strftime("%Y-%m-%d")
+        det_input = json.dumps({"json": {"stayId": stay_id, "query": {
+            "checkInDate": d, "checkOutDate": co,
+            "adultPax": 2, "childrenAges": []}}})
+        rd = requests.get(base + "/stay.properties.detail",
+                          params={"input": det_input}, headers=headers,
+                          timeout=30)
+        rd.raise_for_status()
+        detail = rd.json()["result"]["data"]["json"]
+        decks = []
+        for rt in detail.get("roomTypes", []):
+            for rp in rt.get("ratePlans", []):
+                sold_out = (rp.get("price") or {}).get("soldOut", True)
+                avail = (rp.get("validation") or {}).get("availability")
+                if not sold_out and avail == "VALID":
+                    decks.append((rt.get("roomTypeInfo") or {})
+                                 .get("roomTypeName", "데크"))
+                    break
+        if decks:
+            results[d] = {"status": AVAILABLE,
+                          "detail": "데크 %d개 예약 가능 (%s)"
+                                    % (len(decks), ", ".join(decks[:8]))}
+        else:
+            results[d] = {"status": FULL, "detail": "전 데크 매진"}
+    return results
 
 
 def check_knps(site_cfg, target_dates):

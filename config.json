@@ -15,11 +15,11 @@
       "booking_url": "https://camping.isdc.co.kr/ydpc/camping"
     },
     "cheonwangsan": {
-      "enabled": false,
-      "_note": "데크 예약이 인터파크 티켓으로 이관됨. 분석 완료 후 활성화 예정",
+      "enabled": true,
+      "_note": "데크 예약이 NOL(야놀자)로 이관됨",
       "name": "천왕산 가족캠핑장",
       "interval_sec": 55,
-      "booking_url": "https://tickets.interpark.com/goods/21012652"
+      "booking_url": "https://nol.yanolja.com/stay/domestic/10070087"
     },
     "knps": {
       "enabled": false,
