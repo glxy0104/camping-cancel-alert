@@ -403,7 +403,7 @@ def diff_and_alert(site_key, site_cfg, new_results, state, dry_run=False):
                 kind = "🔥 취소표 발생!" if prev == FULL else "🏕 예약 가능!"
                 send_telegram("%s\n%s\n%s\n👉 %s"
                               % (kind, label, res["detail"], url), dry_run)
-            elif cur == FULL and prev in (None, NOT_OPEN):
+            elif cur == FULL and prev == NOT_OPEN:
                 send_telegram("ℹ️ 예약 오픈 감지 (이미 마감 상태)\n%s\n%s"
                               % (label, res["detail"]), dry_run)
             elif cur == CLOSED and prev not in (None,):
