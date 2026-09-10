@@ -399,15 +399,11 @@ def diff_and_alert(site_key, site_cfg, new_results, state, dry_run=False):
 
         if cur != prev:
             changed = True
+            # 알림은 "지금 잡을 수 있는 상태"가 됐을 때만 (오픈/마감 정보성 알림 없음)
             if cur == AVAILABLE:
                 kind = "🔥 취소표 발생!" if prev == FULL else "🏕 예약 가능!"
                 send_telegram("%s\n%s\n%s\n👉 %s"
                               % (kind, label, res["detail"], url), dry_run)
-            elif cur == FULL and prev == NOT_OPEN:
-                send_telegram("ℹ️ 예약 오픈 감지 (이미 마감 상태)\n%s\n%s"
-                              % (label, res["detail"]), dry_run)
-            elif cur == CLOSED and prev not in (None,):
-                send_telegram("ℹ️ %s: 휴장일로 표시됨" % label, dry_run)
             log("변경: %s  %s -> %s (%s)" % (label, prev, cur, res["detail"]))
         state[state_key] = {"status": cur, "detail": res["detail"],
                             "checked_at": now_kst().isoformat()}

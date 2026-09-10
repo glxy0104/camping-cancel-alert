@@ -35,7 +35,7 @@
     "foresttrip": {
       "enabled": true,
       "name": "자연휴양림",
-      "interval_sec": 120,
+      "interval_sec": 30,
       "booking_url": "https://www.foresttrip.go.kr",
       "forests": {
         "중미산": "0108",
