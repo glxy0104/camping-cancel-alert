@@ -1,5 +1,9 @@
 {
-  "target_dates": ["2026-10-02", "2026-10-03", "2026-10-04"],
+  "target_dates": [
+    "2026-10-02",
+    "2026-10-03",
+    "2026-10-04"
+  ],
   "nights": 1,
   "sites": {
     "gwanggyo": {
@@ -15,8 +19,8 @@
       "booking_url": "https://camping.isdc.co.kr/ydpc/camping"
     },
     "cheonwangsan": {
-      "enabled": true,
-      "_note": "데크 예약이 NOL(야놀자)로 이관됨",
+      "enabled": false,
+      "_note": "사용자 요청으로 감시 제외 (다시 켜려면 enabled: true)",
       "name": "천왕산 가족캠핑장",
       "interval_sec": 55,
       "booking_url": "https://nol.yanolja.com/stay/domestic/10070087"

@@ -8,7 +8,7 @@
 |---|---|---|
 | 광교호수공원 가족캠핑장 | forest.maketicket.co.kr | 55초 |
 | 율동공원 오토캠핑장 | camping.isdc.co.kr | 55초 |
-| 천왕산 가족캠핑장 | yeyak.seoul.go.kr | 55초 |
+| 천왕산 가족캠핑장 | nol.yanolja.com (현재 감시 제외, config에서 켤 수 있음) | 55초 |
 | 국립공원공단 야영장 | reservation.knps.or.kr | 5분 (config에서 야영장 추가 시) |
 
 감시 날짜와 대상은 [config.json](config.json)에서 수정한다 (`target_dates`: 입실일 목록).
