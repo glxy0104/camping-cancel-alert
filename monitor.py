@@ -1,0 +1,377 @@
+# -*- coding: utf-8 -*-
+"""
+국립/공영 캠핑장 취소표 알림 모니터
+- 광교호수공원 가족캠핑장 (forest.maketicket.co.kr)
+- 율동공원 오토캠핑장 (camping.isdc.co.kr)
+- 천왕산 가족캠핑장 (yeyak.seoul.go.kr)
+- 국립공원공단 야영장 (reservation.knps.or.kr)
+
+사용법:
+  python monitor.py --once            # 1회 조회 후 현재 상태 출력
+  python monitor.py --once --dry-run  # 텔레그램 발송/상태저장 없이 조회만
+  python monitor.py --loop 340        # 340분 동안 주기적으로 감시 (GitHub Actions용)
+
+환경변수: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import traceback
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
+STATE_PATH = os.path.join(BASE_DIR, "state.json")
+
+UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
+
+KST = timezone(timedelta(hours=9))
+WEEKDAY_KR = ["월", "화", "수", "목", "금", "토", "일"]
+
+# 상태값
+AVAILABLE = "available"   # 예약 가능 (잔여 있음)
+FULL = "full"             # 오픈됐지만 매진
+NOT_OPEN = "not_open"     # 아직 판매/예약 오픈 전
+CLOSED = "closed"         # 휴장일 등 이용 불가
+ERROR = "error"
+
+
+def now_kst():
+    return datetime.now(KST)
+
+
+def date_label(d):
+    """'2026-10-02' -> '10/2(금)'"""
+    dt = datetime.strptime(d, "%Y-%m-%d")
+    return "%d/%d(%s)" % (dt.month, dt.day, WEEKDAY_KR[dt.weekday()])
+
+
+def log(msg):
+    print("[%s] %s" % (now_kst().strftime("%m-%d %H:%M:%S"), msg), flush=True)
+
+
+# ---------------------------------------------------------------- 체커들
+# 각 체커는 {"2026-10-02": {"status": ..., "detail": "..."}} 형태를 반환한다.
+
+def check_gwanggyo(site_cfg, target_dates):
+    """광교호수공원: forest.maketicket.co.kr 달력 (월 단위, 무인증)"""
+    zone_names = {
+        "CM000255": "오토캠핑(나무데크)",
+        "CM000256": "오토캠핑(잔디데크)",
+        "CM000254": "캐러반",
+    }
+    months = sorted({d[:7] for d in target_dates})
+    results = {d: {"status": NOT_OPEN, "detail": ""} for d in target_dates}
+    for month in months:
+        ym = month.replace("-", "") + "01"
+        r = requests.post(
+            "https://forest.maketicket.co.kr/camp/reserve/calendar.jsp",
+            data={"idkey": "5M4255", "gd_seq": "GD129",
+                  "yyyymmdd": ym, "sd_date": ym},
+            headers={"User-Agent": UA,
+                     "Referer": "https://forest.maketicket.co.kr/ticket/GD129"},
+            timeout=30)
+        r.raise_for_status()
+        html = r.text
+        # f_SelectDateZone( "20261002" , "CM000255" , "SD..." , "1" , "17" )
+        pat = re.compile(
+            r'f_SelectDateZone\(\s*"(\d{8})"\s*,\s*"([A-Z0-9]+)"\s*,'
+            r'\s*"[A-Z0-9]+"\s*,\s*"\d+"\s*,\s*"(\d+)"')
+        by_date = {}
+        for ymd, zone, remain in pat.findall(html):
+            d = "%s-%s-%s" % (ymd[:4], ymd[4:6], ymd[6:8])
+            by_date.setdefault(d, []).append(
+                (zone_names.get(zone, zone), int(remain)))
+        for d in target_dates:
+            if d[:7] != month:
+                continue
+            zones = by_date.get(d)
+            if zones is None:
+                results[d] = {"status": NOT_OPEN, "detail": "판매 오픈 전"}
+            else:
+                avail = [(n, c) for n, c in zones if c > 0]
+                if avail:
+                    detail = ", ".join("%s %d자리" % (n, c) for n, c in avail)
+                    results[d] = {"status": AVAILABLE, "detail": detail}
+                else:
+                    results[d] = {"status": FULL, "detail": "전 구역 마감"}
+    return results
+
+
+def check_yuldong(site_cfg, target_dates):
+    """율동공원: camping.isdc.co.kr calendar.do (월 단위, 무인증)"""
+    months = sorted({d[:7] for d in target_dates})
+    results = {d: {"status": NOT_OPEN, "detail": ""} for d in target_dates}
+    for month in months:
+        r = requests.post(
+            "https://camping.isdc.co.kr/camping/calendar.do",
+            data={"pageId": "A98285584", "groupCode": "ydpc",
+                  "selectMonth": month, "device": "pc",
+                  "pageType": "reservation"},
+            headers={"User-Agent": UA},
+            timeout=30)
+        r.raise_for_status()
+        html = r.text
+        # 날짜 id 등장 위치 기준으로 셀 블록을 슬라이스 (태그 속성 순서가 제각각이라)
+        marks = [(m.group(1), m.start())
+                 for m in re.finditer(r'id="(\d{4}-\d{2}-\d{2})"', html)]
+        blocks = {}
+        for i, (d, pos) in enumerate(marks):
+            end = marks[i + 1][1] if i + 1 < len(marks) else len(html)
+            blocks[d] = html[pos:end]
+        for d in target_dates:
+            if d[:7] != month:
+                continue
+            block = blocks.get(d)
+            if block is None:
+                results[d] = {"status": NOT_OPEN, "detail": "달력에 없음"}
+                continue
+            # 셀 여는 태그(첫 '>' 전)에 있는 class에서 click 여부 판단
+            cls = ""
+            mc = re.search(r'class="([^"]*)"', block.split(">", 1)[0])
+            if mc:
+                cls = mc.group(1)
+            # 범례 영역까지 읽지 않도록 블록 내에서만 휴장 여부 확인
+            if "stopReason" in block:
+                results[d] = {"status": CLOSED, "detail": "휴장일"}
+                continue
+            cats = re.findall(r"<dt>\s*(\d+)\s*</dt>\s*<dd>([^<]+)</dd>", block)
+            if "click" not in cls.split() and not cats:
+                results[d] = {"status": NOT_OPEN, "detail": "예약 오픈 전"}
+                continue
+            avail = [(name.strip(), int(cnt)) for cnt, name in cats
+                     if int(cnt) > 0]
+            if avail:
+                detail = ", ".join("%s %d자리" % (n, c) for n, c in avail)
+                results[d] = {"status": AVAILABLE, "detail": detail}
+            else:
+                results[d] = {"status": FULL, "detail": "전 구역 마감"}
+    return results
+
+
+def check_cheonwangsan(site_cfg, target_dates):
+    """천왕산 가족캠핑장: 서울시 공공서비스예약 (yeyak.seoul.go.kr)"""
+    # NOTE: 엔드포인트 분석 완료 후 구현 예정
+    raise NotImplementedError("천왕산 체커는 분석 완료 후 활성화됩니다")
+
+
+def check_knps(site_cfg, target_dates):
+    """국립공원공단: campsiteList.do (야영장별, 무인증, 응답이 큼)
+    config의 campgrounds: {"설악동": "B031005", ...}
+    반환 키는 '야영장명|날짜' 형태."""
+    results = {}
+    target_ymd = {d.replace("-", ""): d for d in target_dates}
+    for camp_name, dept_id in site_cfg.get("campgrounds", {}).items():
+        r = requests.post(
+            "https://reservation.knps.or.kr/reservation/campsiteList.do",
+            data={"dept_id": dept_id},
+            headers={"User-Agent": UA},
+            timeout=120)
+        r.raise_for_status()
+        counts = {}  # ymd -> {"N": n, "C": n, "W": n}
+        for ymd, code in re.findall(r'class="icon-[a-z-]+ (\d{8})_([A-Z])"',
+                                    r.text):
+            if ymd in target_ymd:
+                counts.setdefault(ymd, {}).setdefault(code, 0)
+                counts[ymd][code] += 1
+        for ymd, d in target_ymd.items():
+            key = "%s|%s" % (camp_name, d)
+            c = counts.get(ymd)
+            if not c:
+                results[key] = {"status": NOT_OPEN,
+                                "detail": "조회 기간 밖(오픈 전)"}
+            elif c.get("N", 0) > 0:
+                results[key] = {"status": AVAILABLE,
+                                "detail": "%d개 영지 예약 가능" % c["N"]}
+            elif c.get("W", 0) > 0:
+                results[key] = {"status": FULL,
+                                "detail": "매진 (대기신청 %d개 가능)" % c["W"]}
+            else:
+                results[key] = {"status": FULL, "detail": "전 영지 매진"}
+    return results
+
+
+CHECKERS = {
+    "gwanggyo": check_gwanggyo,
+    "yuldong": check_yuldong,
+    "cheonwangsan": check_cheonwangsan,
+    "knps": check_knps,
+}
+
+
+# ---------------------------------------------------------------- 텔레그램
+def send_telegram(text, dry_run=False):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if dry_run or not token or not chat_id:
+        log("(텔레그램 미발송%s) %s" %
+            ("" if token else " - 토큰 없음", text.replace("\n", " | ")))
+        return
+    try:
+        r = requests.post(
+            "https://api.telegram.org/bot%s/sendMessage" % token,
+            json={"chat_id": chat_id, "text": text,
+                  "disable_web_page_preview": True},
+            timeout=20)
+        if r.status_code != 200:
+            log("텔레그램 발송 실패: %s %s" % (r.status_code, r.text[:200]))
+    except Exception as e:
+        log("텔레그램 발송 오류: %s" % e)
+
+
+# ---------------------------------------------------------------- 상태 관리
+def load_state():
+    try:
+        with open(STATE_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_state(state, commit=False):
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2, sort_keys=True)
+    if commit and os.environ.get("GITHUB_ACTIONS") == "true":
+        try:
+            subprocess.run(["git", "config", "user.name", "camping-monitor-bot"],
+                           cwd=BASE_DIR, check=False)
+            subprocess.run(["git", "config", "user.email",
+                            "bot@users.noreply.github.com"],
+                           cwd=BASE_DIR, check=False)
+            subprocess.run(["git", "add", "state.json"], cwd=BASE_DIR, check=False)
+            rc = subprocess.run(["git", "commit", "-m", "상태 업데이트"],
+                                cwd=BASE_DIR, check=False).returncode
+            if rc == 0:
+                subprocess.run(["git", "pull", "--rebase"], cwd=BASE_DIR,
+                               check=False)
+                subprocess.run(["git", "push"], cwd=BASE_DIR, check=False)
+        except Exception as e:
+            log("상태 커밋 실패(무시): %s" % e)
+
+
+# ---------------------------------------------------------------- 비교/알림
+def diff_and_alert(site_key, site_cfg, new_results, state, dry_run=False):
+    """상태 전이를 감지해 알림을 보내고 state를 갱신. 변경 여부를 반환."""
+    changed = False
+    name = site_cfg["name"]
+    url = site_cfg.get("booking_url", "")
+    for key, res in sorted(new_results.items()):
+        state_key = "%s|%s" % (site_key, key)
+        prev = state.get(state_key, {}).get("status")
+        cur = res["status"]
+        # 표시용 라벨: knps는 '야영장명|날짜', 나머지는 '날짜'
+        if "|" in key:
+            camp, d = key.split("|", 1)
+            label = "%s %s %s" % (name, camp, date_label(d))
+        else:
+            label = "%s %s" % (name, date_label(key))
+
+        if cur != prev:
+            changed = True
+            if cur == AVAILABLE:
+                kind = "🔥 취소표 발생!" if prev == FULL else "🏕 예약 가능!"
+                send_telegram("%s\n%s\n%s\n👉 %s"
+                              % (kind, label, res["detail"], url), dry_run)
+            elif cur == FULL and prev in (None, NOT_OPEN):
+                send_telegram("ℹ️ 예약 오픈 감지 (이미 마감 상태)\n%s\n%s"
+                              % (label, res["detail"]), dry_run)
+            elif cur == CLOSED and prev not in (None,):
+                send_telegram("ℹ️ %s: 휴장일로 표시됨" % label, dry_run)
+            log("변경: %s  %s -> %s (%s)" % (label, prev, cur, res["detail"]))
+        state[state_key] = {"status": cur, "detail": res["detail"],
+                            "checked_at": now_kst().isoformat()}
+    return changed
+
+
+# ---------------------------------------------------------------- 메인 루프
+def run_pass(cfg, state, error_counts, dry_run=False, due_only=None):
+    """모든(또는 due_only에 지정된) 사이트를 1회씩 조회."""
+    any_change = False
+    for site_key, site_cfg in cfg["sites"].items():
+        if not site_cfg.get("enabled"):
+            continue
+        if due_only is not None and site_key not in due_only:
+            continue
+        checker = CHECKERS.get(site_key)
+        if checker is None:
+            continue
+        try:
+            results = checker(site_cfg, cfg["target_dates"])
+            if error_counts.get(site_key, 0) >= 30:
+                send_telegram("✅ %s 조회가 다시 정상화됐습니다."
+                              % site_cfg["name"], dry_run)
+            error_counts[site_key] = 0
+            if diff_and_alert(site_key, site_cfg, results, state, dry_run):
+                any_change = True
+        except NotImplementedError:
+            continue
+        except Exception as e:
+            error_counts[site_key] = error_counts.get(site_key, 0) + 1
+            log("오류(%s, %d회 연속): %s"
+                % (site_key, error_counts[site_key], e))
+            if error_counts[site_key] == 30:
+                send_telegram(
+                    "⚠️ %s 조회가 30회 연속 실패 중입니다. "
+                    "사이트 구조가 바뀌었을 수 있어요.\n마지막 오류: %s"
+                    % (site_cfg["name"], e), dry_run)
+    return any_change
+
+
+def print_status(state):
+    print("\n=== 현재 상태 ===")
+    for key in sorted(state):
+        s = state[key]
+        print("  %-40s %-9s %s" % (key, s["status"], s.get("detail", "")))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--once", action="store_true", help="1회만 조회")
+    ap.add_argument("--loop", type=int, metavar="MINUTES",
+                    help="지정한 분 동안 반복 감시")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="텔레그램 발송/상태 저장 없이 조회만")
+    args = ap.parse_args()
+
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        cfg = json.load(f)
+    state = load_state()
+    error_counts = {}
+
+    if args.loop:
+        deadline = time.time() + args.loop * 60
+        next_check = {}  # site_key -> 다음 조회 시각
+        log("감시 시작: %d분 동안, 대상 날짜 %s"
+            % (args.loop, ", ".join(cfg["target_dates"])))
+        while time.time() < deadline:
+            now = time.time()
+            due = [k for k, sc in cfg["sites"].items()
+                   if sc.get("enabled") and next_check.get(k, 0) <= now]
+            if due:
+                changed = run_pass(cfg, state, error_counts,
+                                   args.dry_run, due_only=set(due))
+                for k in due:
+                    next_check[k] = now + cfg["sites"][k].get("interval_sec", 60)
+                if not args.dry_run:
+                    save_state(state, commit=changed)
+            wakeup = min([next_check.get(k, now + 60)
+                          for k, sc in cfg["sites"].items()
+                          if sc.get("enabled")] or [now + 60])
+            time.sleep(max(1, min(wakeup - time.time(), 30)))
+        log("감시 종료 (시간 만료)")
+    else:
+        run_pass(cfg, state, error_counts, args.dry_run)
+        if not args.dry_run:
+            save_state(state, commit=False)
+        print_status(state)
+
+
+if __name__ == "__main__":
+    main()

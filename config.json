@@ -1,0 +1,41 @@
+{
+  "target_dates": ["2026-10-02", "2026-10-03", "2026-10-04"],
+  "nights": 1,
+  "sites": {
+    "gwanggyo": {
+      "enabled": true,
+      "name": "광교호수공원 가족캠핑장",
+      "interval_sec": 55,
+      "booking_url": "https://forest.maketicket.co.kr/ticket/GD129"
+    },
+    "yuldong": {
+      "enabled": true,
+      "name": "율동공원 오토캠핑장",
+      "interval_sec": 55,
+      "booking_url": "https://camping.isdc.co.kr/ydpc/camping"
+    },
+    "cheonwangsan": {
+      "enabled": false,
+      "_note": "데크 예약이 인터파크 티켓으로 이관됨. 분석 완료 후 활성화 예정",
+      "name": "천왕산 가족캠핑장",
+      "interval_sec": 55,
+      "booking_url": "https://tickets.interpark.com/goods/21012652"
+    },
+    "knps": {
+      "enabled": false,
+      "name": "국립공원 야영장",
+      "interval_sec": 300,
+      "booking_url": "https://reservation.knps.or.kr",
+      "campgrounds": {}
+    }
+  },
+  "_knps_dept_id_examples": {
+    "설악산 설악동": "B031005",
+    "북한산 사기막": "B141003",
+    "치악산 구룡": "B101001",
+    "월악산 닷돈재1": "B111003",
+    "소백산 삼가": "B121001",
+    "덕유산 덕유대1": "B051002",
+    "태안해안 몽산포": "B081002"
+  }
+}
