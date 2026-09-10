@@ -321,7 +321,67 @@ def check_foresttrip(site_cfg, target_dates):
     return results
 
 
+def check_donggang(site_cfg, target_dates):
+    """동강전망자연휴양림 오토캠핑장: 정선군시설관리공단 위탁(huyang.co.kr)
+    달력(무쿠키)으로 가능/마감 판별 후, 가능한 날짜만 상세로 잔여 데크 수 확인."""
+    base = "https://jsimc.huyang.co.kr:453/reservation.asp"
+    results = {}
+    months = sorted({d[:7] for d in target_dates})
+    day_status = {}  # 'YYYY-MM-DD' -> 'possible' | 'commit' | 'end'
+    for month in months:
+        yy, mm = month.split("-")
+        r = requests.post(base + "?location=002",
+                          data={"wh_year": yy, "wh_month": str(int(mm)),
+                                "man": "1", "wloc": "C01", "change_stay": "0"},
+                          headers={"User-Agent": UA}, timeout=30)
+        r.raise_for_status()
+        # <td class="open"> ... <span class="day...">2</span> ... possible
+        for cell in r.text.split("<td")[1:]:
+            cell = cell.split("</td>")[0]
+            m = re.search(r'class="day[^"]*"\s*>\s*(\d+)\s*<', cell)
+            if not m:
+                continue
+            d = "%s-%s-%02d" % (yy, mm, int(m.group(1)))
+            if 'class="possible"' in cell or "예약가능" in cell:
+                day_status[d] = "possible"
+            elif 'class="commit"' in cell or "예약완료" in cell:
+                day_status[d] = "commit"
+            else:
+                day_status[d] = "end"
+    for d in target_dates:
+        st = day_status.get(d)
+        if st == "possible":
+            # 상세 조회로 잔여 데크 수 (Referer 필수, 302면 전부 마감)
+            dt = datetime.strptime(d, "%Y-%m-%d")
+            rd = requests.post(
+                base + "?location=002_01",
+                data={"syyyy": dt.year, "smm": dt.month, "sdd": dt.day,
+                      "edd": "0", "man": "1", "wloc": "C01"},
+                headers={"User-Agent": UA,
+                         "Referer": base + "?location=002&wloc=C01"},
+                timeout=30, allow_redirects=False)
+            if rd.status_code == 302:
+                results[d] = {"status": FULL, "detail": "전 데크 마감"}
+            else:
+                decks = sorted(set(re.findall(r"데크\s*\d+", rd.text)))
+                if decks:
+                    results[d] = {"status": AVAILABLE,
+                                  "detail": "데크 %d개 예약 가능 (%s)"
+                                            % (len(decks),
+                                               ", ".join(decks[:8]))}
+                else:
+                    results[d] = {"status": FULL, "detail": "전 데크 마감"}
+        elif st == "commit":
+            results[d] = {"status": FULL, "detail": "예약완료(마감)"}
+        elif st == "end":
+            results[d] = {"status": CLOSED, "detail": "예약종료/비운영"}
+        else:
+            results[d] = {"status": NOT_OPEN, "detail": "달력에 없음"}
+    return results
+
+
 CHECKERS = {
+    "donggang": check_donggang,
     "gwanggyo": check_gwanggyo,
     "yuldong": check_yuldong,
     "cheonwangsan": check_cheonwangsan,
