@@ -1,0 +1,18 @@
+name: diag-donggang
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 동강전망(포트 453) 접속 테스트
+        run: |
+          echo "== 달력 엔드포인트 =="
+          curl -sv -m 25 -o /tmp/cal.html -w "HTTP %{http_code}, %{size_download} bytes, %{time_total}s\n" \
+            -X POST "https://jsimc.huyang.co.kr:453/reservation.asp?location=002" \
+            -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36" \
+            --data "wh_year=2026&wh_month=10&man=1&wloc=C01&change_stay=0" 2>&1 | tail -5
+          grep -c "possible" /tmp/cal.html && echo "달력 파싱 OK" || echo "달력 파싱 실패"
