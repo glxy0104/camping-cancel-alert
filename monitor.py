@@ -246,11 +246,87 @@ def check_knps(site_cfg, target_dates):
     return results
 
 
+# 숲나들e 익명 세션 캐시 (JSESSIONID + 짝이 맞는 CSRF 토큰)
+_FT_SESSION = {"session": None, "csrf": None}
+
+
+def _foresttrip_session(force=False):
+    if _FT_SESSION["session"] is not None and not force:
+        return _FT_SESSION["session"], _FT_SESSION["csrf"]
+    s = requests.Session()
+    s.headers["User-Agent"] = UA
+    r = s.get("https://www.foresttrip.go.kr/rep/or/fcfsRsrvtMain.do"
+              "?hmpgId=FRIP&menuId=001001", timeout=30)
+    r.raise_for_status()
+    m = re.search(r'name="_csrf" value="([^"]+)"', r.text)
+    if not m:
+        raise RuntimeError("숲나들e CSRF 토큰을 찾지 못함")
+    _FT_SESSION["session"], _FT_SESSION["csrf"] = s, m.group(1)
+    return s, m.group(1)
+
+
+def check_foresttrip(site_cfg, target_dates):
+    """국립자연휴양림 숲나들e: 날짜별 야영데크 선착순 잔여 수 (익명 세션 필요)
+    날짜당 1회 검색으로 전국 카드가 오므로, 설정된 휴양림들을 insttId로 골라낸다.
+    반환 키는 '휴양림명|날짜'."""
+    forests = site_cfg.get("forests", {})  # {"중미산": "0108", ...}
+    if not forests:
+        return {}
+    results = {}
+    nights = 1
+    for d in target_dates:
+        bg = d.replace("-", "")
+        ed = (datetime.strptime(d, "%Y-%m-%d")
+              + timedelta(days=nights)).strftime("%Y%m%d")
+        payload = {
+            "srchInsttId": "", "srchRsrvtBgDt": bg, "srchRsrvtEdDt": ed,
+            "srchStngNofpr": "2", "srchSthngCnt": str(nights),
+            "houseCampSctin": "02", "rsrvtPssblYn": "N",
+            "goodsClsscHouseCdArr": [], "goodsClsscCampCdArr": ["02002"],
+            "srchInsttTpcd": [], "cmdogYn": "N", "bbqYn": "N",
+            "dsprsYn": "N", "otsdWeterYn": "N", "wifiYn": "N",
+            "snowPlaceYn": "N",
+        }
+        html = None
+        for attempt in (1, 2):
+            s, csrf = _foresttrip_session(force=(attempt == 2))
+            r = s.post("https://www.foresttrip.go.kr/rep/or/"
+                       "innerFcfsRcrfrDtlDetls.do?_csrf=" + csrf,
+                       json=payload, timeout=30)
+            if r.status_code == 200 and "rc_item" in r.text:
+                html = r.text
+                break
+        if html is None:
+            raise RuntimeError("숲나들e 검색 실패 (HTTP %s)" % r.status_code)
+        # 카드 파싱: 각 rc_item 청크 끝에 insttId 스크립트가 붙는다
+        by_instt = {}
+        for chunk in html.split('<div class="rc_item">')[1:]:
+            m_id = re.search(r'insttId:"(\d+)"', chunk)
+            m_cnt = re.search(r"예약가능\s*객실\s*수\s*:\s*(\d+)", chunk)
+            if m_id:
+                by_instt[m_id.group(1)] = \
+                    int(m_cnt.group(1)) if m_cnt else 0
+        for f_name, instt_id in forests.items():
+            key = "%s|%s" % (f_name, d)
+            cnt = by_instt.get(instt_id)
+            if cnt is None:
+                results[key] = {"status": NOT_OPEN,
+                                "detail": "검색 결과에 없음"}
+            elif cnt > 0:
+                results[key] = {"status": AVAILABLE,
+                                "detail": "야영데크 %d개 예약 가능" % cnt}
+            else:
+                results[key] = {"status": FULL,
+                                "detail": "선착순 잔여 없음"}
+    return results
+
+
 CHECKERS = {
     "gwanggyo": check_gwanggyo,
     "yuldong": check_yuldong,
     "cheonwangsan": check_cheonwangsan,
     "knps": check_knps,
+    "foresttrip": check_foresttrip,
 }
 
 

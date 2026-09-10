@@ -31,6 +31,17 @@
       "interval_sec": 300,
       "booking_url": "https://reservation.knps.or.kr",
       "campgrounds": {}
+    },
+    "foresttrip": {
+      "enabled": true,
+      "name": "자연휴양림",
+      "interval_sec": 120,
+      "booking_url": "https://www.foresttrip.go.kr",
+      "forests": {
+        "중미산": "0108",
+        "용현": "0220",
+        "유명산": "0101"
+      }
     }
   },
   "_knps_dept_id_examples": {
