@@ -516,8 +516,17 @@ def run_pass(cfg, state, error_counts, dry_run=False, due_only=None):
 def print_status(state):
     print("\n=== 현재 상태 ===")
     for key in sorted(state):
+        if key.startswith("_"):
+            continue
         s = state[key]
         print("  %-40s %-9s %s" % (key, s["status"], s.get("detail", "")))
+
+
+def next_interval(interval, fails):
+    """연속 실패 시 지수적으로 조회 간격을 늘림 (사이트 보호 + 차단 방지)"""
+    if fails <= 0:
+        return interval
+    return min(600, interval * (2 ** min(fails, 4)))
 
 
 def main():
@@ -532,7 +541,8 @@ def main():
     with open(CONFIG_PATH, encoding="utf-8") as f:
         cfg = json.load(f)
     state = load_state()
-    error_counts = {}
+    # 연속 실패 횟수는 상태 파일에 남겨 --once(launchd) 실행 간에도 이어짐
+    error_counts = state.setdefault("_errors", {})
 
     if args.loop:
         deadline = time.time() + args.loop * 60
@@ -550,7 +560,9 @@ def main():
                 changed = run_pass(cfg, state, error_counts,
                                    args.dry_run, due_only=set(due))
                 for k in due:
-                    next_check[k] = now + my_sites[k].get("interval_sec", 60)
+                    next_check[k] = now + next_interval(
+                        my_sites[k].get("interval_sec", 60),
+                        error_counts.get(k, 0))
                 if not args.dry_run:
                     save_state(state, commit=changed)
             wakeup = min([next_check.get(k, now + 60)
@@ -558,7 +570,18 @@ def main():
             time.sleep(max(1, min(wakeup - time.time(), 30)))
         log("감시 종료 (시간 만료)")
     else:
-        run_pass(cfg, state, error_counts, args.dry_run)
+        # --once (launchd 등): 사이트별 주기를 상태 파일의 다음 조회 시각으로 관리
+        now = time.time()
+        nxt = state.setdefault("_next", {})
+        due = [k for k, sc in cfg["sites"].items()
+               if sc.get("enabled")
+               and sc.get("runner", "github") == RUNNER
+               and float(nxt.get(k, 0)) <= now]
+        run_pass(cfg, state, error_counts, args.dry_run, due_only=set(due))
+        for k in due:
+            nxt[k] = now + next_interval(
+                cfg["sites"][k].get("interval_sec", 60),
+                error_counts.get(k, 0))
         if not args.dry_run:
             save_state(state, commit=False)
         print_status(state)

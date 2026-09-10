@@ -35,13 +35,15 @@
     "foresttrip": {
       "enabled": true,
       "name": "자연휴양림",
-      "interval_sec": 30,
+      "interval_sec": 60,
       "booking_url": "https://www.foresttrip.go.kr",
       "forests": {
         "중미산": "0108",
         "용현": "0220",
         "유명산": "0101"
-      }
+      },
+      "runner": "local",
+      "_note": "숲나들e가 해외(GitHub) IP 차단 → 맥에서 감시. 집 IP 보호 위해 60초"
     },
     "donggang": {
       "enabled": true,
