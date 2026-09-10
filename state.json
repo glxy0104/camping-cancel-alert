@@ -1,0 +1,17 @@
+{
+  "gwanggyo|2026-10-02": {
+    "checked_at": "2026-09-10T14:26:13.832460+09:00",
+    "detail": "판매 오픈 전",
+    "status": "not_open"
+  },
+  "gwanggyo|2026-10-03": {
+    "checked_at": "2026-09-10T14:26:13.832506+09:00",
+    "detail": "판매 오픈 전",
+    "status": "not_open"
+  },
+  "gwanggyo|2026-10-04": {
+    "checked_at": "2026-09-10T14:26:13.832535+09:00",
+    "detail": "판매 오픈 전",
+    "status": "not_open"
+  }
+}
