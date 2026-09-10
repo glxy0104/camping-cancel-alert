@@ -27,7 +27,14 @@ import requests
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-STATE_PATH = os.path.join(BASE_DIR, "state.json")
+STATE_PATH = os.environ.get("MONITOR_STATE_PATH") \
+    or os.path.join(BASE_DIR, "state.json")
+
+# 실행 위치: GitHub Actions면 "github", 아니면 "local"(맥).
+# 사이트별 config의 "runner" 값과 일치하는 곳에서만 그 사이트를 감시한다.
+# (동강전망처럼 해외 IP가 차단되는 사이트는 runner: "local"로 지정)
+RUNNER = "github" if os.environ.get("GITHUB_ACTIONS") == "true" \
+    else os.environ.get("MONITOR_RUNNER", "local")
 
 UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/128.0 Safari/537.36")
@@ -477,6 +484,8 @@ def run_pass(cfg, state, error_counts, dry_run=False, due_only=None):
     for site_key, site_cfg in cfg["sites"].items():
         if not site_cfg.get("enabled"):
             continue
+        if site_cfg.get("runner", "github") != RUNNER:
+            continue
         if due_only is not None and site_key not in due_only:
             continue
         checker = CHECKERS.get(site_key)
@@ -528,22 +537,24 @@ def main():
     if args.loop:
         deadline = time.time() + args.loop * 60
         next_check = {}  # site_key -> 다음 조회 시각
-        log("감시 시작: %d분 동안, 대상 날짜 %s"
-            % (args.loop, ", ".join(cfg["target_dates"])))
+        my_sites = {k: sc for k, sc in cfg["sites"].items()
+                    if sc.get("enabled")
+                    and sc.get("runner", "github") == RUNNER}
+        log("감시 시작(%s): %d분 동안, 사이트 %s, 대상 날짜 %s"
+            % (RUNNER, args.loop, ", ".join(my_sites) or "없음",
+               ", ".join(cfg["target_dates"])))
         while time.time() < deadline:
             now = time.time()
-            due = [k for k, sc in cfg["sites"].items()
-                   if sc.get("enabled") and next_check.get(k, 0) <= now]
+            due = [k for k in my_sites if next_check.get(k, 0) <= now]
             if due:
                 changed = run_pass(cfg, state, error_counts,
                                    args.dry_run, due_only=set(due))
                 for k in due:
-                    next_check[k] = now + cfg["sites"][k].get("interval_sec", 60)
+                    next_check[k] = now + my_sites[k].get("interval_sec", 60)
                 if not args.dry_run:
                     save_state(state, commit=changed)
             wakeup = min([next_check.get(k, now + 60)
-                          for k, sc in cfg["sites"].items()
-                          if sc.get("enabled")] or [now + 60])
+                          for k in my_sites] or [now + 60])
             time.sleep(max(1, min(wakeup - time.time(), 30)))
         log("감시 종료 (시간 만료)")
     else:

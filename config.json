@@ -47,7 +47,9 @@
       "enabled": true,
       "name": "동강전망자연휴양림",
       "interval_sec": 30,
-      "booking_url": "https://jsimc.huyang.co.kr:453/reservation.asp?location=002&wloc=C01"
+      "booking_url": "https://jsimc.huyang.co.kr:453/reservation.asp?location=002&wloc=C01",
+      "runner": "local",
+      "_note": "해외 IP 차단으로 GitHub에서 불가 → 맥(launchd)에서 감시"
     }
   },
   "_knps_dept_id_examples": {
