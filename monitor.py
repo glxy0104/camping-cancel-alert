@@ -316,15 +316,19 @@ def check_foresttrip(site_cfg, target_dates):
         for f_name, instt_id in forests.items():
             key = "%s|%s" % (f_name, d)
             cnt = by_instt.get(instt_id)
+            # 휴양림별 예약 페이지 직행 링크 (데크 번호는 로그인해야 보임)
+            url = ("https://www.foresttrip.go.kr/indvz/main.do?hmpgId="
+                   + instt_id)
             if cnt is None:
                 results[key] = {"status": NOT_OPEN,
-                                "detail": "검색 결과에 없음"}
+                                "detail": "검색 결과에 없음", "url": url}
             elif cnt > 0:
                 results[key] = {"status": AVAILABLE,
-                                "detail": "야영데크 %d개 예약 가능" % cnt}
+                                "detail": "야영데크 %d개 예약 가능" % cnt,
+                                "url": url}
             else:
                 results[key] = {"status": FULL,
-                                "detail": "선착순 잔여 없음"}
+                                "detail": "선착순 잔여 없음", "url": url}
     return results
 
 
@@ -470,7 +474,8 @@ def diff_and_alert(site_key, site_cfg, new_results, state, dry_run=False):
             if cur == AVAILABLE:
                 kind = "🔥 취소표 발생!" if prev == FULL else "🏕 예약 가능!"
                 send_telegram("%s\n%s\n%s\n👉 %s"
-                              % (kind, label, res["detail"], url), dry_run)
+                              % (kind, label, res["detail"],
+                                 res.get("url") or url), dry_run)
             log("변경: %s  %s -> %s (%s)" % (label, prev, cur, res["detail"]))
         state[state_key] = {"status": cur, "detail": res["detail"],
                             "checked_at": now_kst().isoformat()}
