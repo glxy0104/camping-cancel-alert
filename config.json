@@ -18,13 +18,6 @@
       "interval_sec": 55,
       "booking_url": "https://camping.isdc.co.kr/ydpc/camping"
     },
-    "cheonwangsan": {
-      "enabled": false,
-      "_note": "사용자 요청으로 감시 제외 (다시 켜려면 enabled: true)",
-      "name": "천왕산 가족캠핑장",
-      "interval_sec": 55,
-      "booking_url": "https://nol.yanolja.com/stay/domestic/10070087"
-    },
     "knps": {
       "enabled": false,
       "name": "국립공원 야영장",

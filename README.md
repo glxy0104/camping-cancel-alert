@@ -4,12 +4,17 @@
 
 ## 감시 대상
 
-| 캠핑장 | 예약 시스템 | 조회 주기 |
-|---|---|---|
-| 광교호수공원 가족캠핑장 | forest.maketicket.co.kr | 55초 |
-| 율동공원 오토캠핑장 | camping.isdc.co.kr | 55초 |
-| 천왕산 가족캠핑장 | nol.yanolja.com (현재 감시 제외, config에서 켤 수 있음) | 55초 |
-| 국립공원공단 야영장 | reservation.knps.or.kr | 5분 (config에서 야영장 추가 시) |
+| 캠핑장 | 예약 시스템 | 조회 주기 | 실행 위치 |
+|---|---|---|---|
+| 광교호수공원 가족캠핑장 | forest.maketicket.co.kr | 55초 | GitHub Actions |
+| 율동공원 오토캠핑장 | camping.isdc.co.kr | 55초 | GitHub Actions |
+| 중미산·용현·유명산 자연휴양림 | foresttrip.go.kr (숲나들e) | 60초 | 맥 launchd |
+| 동강전망자연휴양림 | jsimc.huyang.co.kr | 30초 | 맥 launchd |
+| 국립공원공단 야영장 | reservation.knps.or.kr | 5분 | config에서 야영장 추가 시 |
+
+숲나들e·동강전망 서버는 해외(GitHub) IP를 차단해서 `runner: "local"`로 지정해 맥에서 감시한다
+(launchd `com.camping.donggang`, 실행 클론 `~/.camping-monitor` — 코드/설정 변경 시 거기서 `git pull` 필요).
+천왕산 가족캠핑장은 감시했다가 제외됨 (예약처는 NOL/야놀자, stayId 10070087 — 필요 시 git 히스토리에서 체커 복원).
 
 감시 날짜와 대상은 [config.json](config.json)에서 수정한다 (`target_dates`: 입실일 목록).
 
