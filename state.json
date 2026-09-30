@@ -1,7 +1,7 @@
 {
   "_errors": {
     "gwanggyo": 0,
-    "yuldong": 5
+    "yuldong": 0
   },
   "foresttrip|용현|2026-10-02": {
     "checked_at": "2026-09-10T16:16:58.406166+09:00",
@@ -49,33 +49,33 @@
     "status": "full"
   },
   "gwanggyo|2026-10-02": {
-    "checked_at": "2026-09-30T18:02:36.206652+09:00",
+    "checked_at": "2026-10-01T00:00:13.872267+09:00",
     "detail": "판매 오픈 전",
     "status": "not_open"
   },
   "gwanggyo|2026-10-03": {
-    "checked_at": "2026-09-30T18:02:36.206682+09:00",
+    "checked_at": "2026-10-01T00:00:13.872297+09:00",
     "detail": "판매 오픈 전",
     "status": "not_open"
   },
   "gwanggyo|2026-10-04": {
-    "checked_at": "2026-09-30T18:02:36.206696+09:00",
+    "checked_at": "2026-10-01T00:00:13.872310+09:00",
     "detail": "판매 오픈 전",
     "status": "not_open"
   },
   "yuldong|2026-10-02": {
-    "checked_at": "2026-09-30T17:37:10.664114+09:00",
-    "detail": "예약 오픈 전",
-    "status": "not_open"
+    "checked_at": "2026-10-01T00:00:16.384568+09:00",
+    "detail": "전 구역 마감",
+    "status": "full"
   },
   "yuldong|2026-10-03": {
-    "checked_at": "2026-09-30T17:37:10.664157+09:00",
-    "detail": "예약 오픈 전",
-    "status": "not_open"
+    "checked_at": "2026-10-01T00:00:16.384612+09:00",
+    "detail": "전 구역 마감",
+    "status": "full"
   },
   "yuldong|2026-10-04": {
-    "checked_at": "2026-09-30T17:37:10.664174+09:00",
-    "detail": "예약 오픈 전",
-    "status": "not_open"
+    "checked_at": "2026-10-01T00:00:16.384635+09:00",
+    "detail": "전 구역 마감",
+    "status": "full"
   }
 }
