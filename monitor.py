@@ -110,6 +110,42 @@ def check_gwanggyo(site_cfg, target_dates):
     return results
 
 
+def _yuldong_pins(date, nights=1):
+    """율동 자리(핀) 단위 2차 검증: 실제 선택 가능한 자리 번호 목록.
+    달력 잔여 수는 미결제/환불처리 중인 '유령 자리'를 포함할 수 있어서,
+    알림 전에 이걸로 확인한다. (미리해 대기열 → 페이지 tocken → 핀 JSON)"""
+    import urllib.parse
+    s = requests.Session()
+    s.headers["User-Agent"] = UA
+    page_url = "https://camping.isdc.co.kr/ydpc/camping/A98285584"
+    wait_api = ("https://cdn.mirihae.com:9443/api/waiting?uri="
+                + urllib.parse.quote(page_url, safe=""))
+    wt = s.post(wait_api, timeout=15).text.strip()
+    r = s.get(wait_api, headers={"X-Mirihae-Waiting-Token": wt}, timeout=15)
+    r.raise_for_status()  # 425 = 대기열 혼잡 → 예외로 폴백
+    gate = r.json()["enteringToken"]
+    pg = s.get(page_url, params={"gateToken": gate}, timeout=20)
+    m = re.search(r'id="tocken"\s+value="([^"]+)"', pg.text)
+    if not m:
+        raise RuntimeError("tocken 없음")
+    end = (datetime.strptime(date, "%Y-%m-%d")
+           + timedelta(days=nights)).strftime("%Y-%m-%d")
+    r = s.post("https://camping.isdc.co.kr/camping/selectAjaxDatePinInfo.do",
+               data={"pageType": "reservation", "device": "pc",
+                     "tocken": m.group(1), "pageId": "A98285584",
+                     "groupCode": "ydpc", "selectStartDate": date,
+                     "selectEndDate": end, "selectMonth": date[:7]},
+               timeout=20)
+    r.raise_for_status()
+    pins = []
+    for cat in r.json().get("pinCategoryList", []):
+        for p in cat.get("pinList", []):
+            if p.get("useAt") == "Y":
+                pins.append("%s(%s)" % (p.get("itemNm", "?"),
+                                        p.get("categoryNm", "").strip()))
+    return pins
+
+
 def check_yuldong(site_cfg, target_dates):
     """율동공원: camping.isdc.co.kr calendar.do (월 단위, 무인증)"""
     months = sorted({d[:7] for d in target_dates})
@@ -153,11 +189,25 @@ def check_yuldong(site_cfg, target_dates):
                 continue
             avail = [(name.strip(), int(cnt)) for cnt, name in cats
                      if int(cnt) > 0]
-            if avail:
-                detail = ", ".join("%s %d자리" % (n, c) for n, c in avail)
-                results[d] = {"status": AVAILABLE, "detail": detail}
-            else:
+            if not avail:
                 results[d] = {"status": FULL, "detail": "전 구역 마감"}
+                continue
+            # 달력에 잔여가 떠도 유령 자리일 수 있으니 핀 단위로 2차 검증
+            detail = ", ".join("%s %d자리" % (n, c) for n, c in avail)
+            try:
+                pins = _yuldong_pins(d)
+                if pins:
+                    results[d] = {"status": AVAILABLE,
+                                  "detail": "자리: " + ", ".join(pins[:8])}
+                else:
+                    results[d] = {"status": FULL,
+                                  "detail": "달력엔 %s로 표시되나 실제 선택 "
+                                            "가능한 자리 없음(유령 잔여)" % detail}
+            except Exception as e:
+                # 검증 실패 시엔 놓치는 것보단 알리는 쪽으로 (fail-open)
+                log("율동 핀 검증 실패(%s), 달력 기준으로 알림" % e)
+                results[d] = {"status": AVAILABLE,
+                              "detail": detail + " (자리번호 확인 실패)"}
     return results
 
 
@@ -387,9 +437,16 @@ def save_state(state, commit=False):
             rc = subprocess.run(["git", "commit", "-m", "상태 업데이트"],
                                 cwd=BASE_DIR, check=False).returncode
             if rc == 0:
-                subprocess.run(["git", "pull", "--rebase"], cwd=BASE_DIR,
-                               check=False)
-                subprocess.run(["git", "push"], cwd=BASE_DIR, check=False)
+                rc_pull = subprocess.run(["git", "pull", "--rebase"],
+                                         cwd=BASE_DIR, check=False).returncode
+                if rc_pull != 0:
+                    # 리베이스가 꼬인 채 남으면 이후 git이 전부 막히므로 정리
+                    subprocess.run(["git", "rebase", "--abort"],
+                                   cwd=BASE_DIR, check=False)
+                rc_push = subprocess.run(["git", "push"], cwd=BASE_DIR,
+                                         check=False).returncode
+                if rc_push != 0:
+                    log("상태 push 실패 (다음 변경 때 재시도)")
         except Exception as e:
             log("상태 커밋 실패(무시): %s" % e)
 
