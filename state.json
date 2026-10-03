@@ -1,7 +1,7 @@
 {
   "_errors": {
     "gwanggyo": 0,
-    "yuldong": 0
+    "yuldong": 33
   },
   "foresttrip|용현|2026-10-02": {
     "checked_at": "2026-09-10T16:16:58.406166+09:00",
@@ -59,7 +59,7 @@
     "status": "not_open"
   },
   "gwanggyo|2026-10-04": {
-    "checked_at": "2026-10-03T19:24:09.408473+09:00",
+    "checked_at": "2026-10-04T06:55:01.523836+09:00",
     "detail": "판매 오픈 전",
     "status": "not_open"
   },
@@ -74,7 +74,7 @@
     "status": "full"
   },
   "yuldong|2026-10-04": {
-    "checked_at": "2026-10-03T19:24:10.985089+09:00",
+    "checked_at": "2026-10-04T01:48:08.238138+09:00",
     "detail": "전 구역 마감",
     "status": "full"
   }
