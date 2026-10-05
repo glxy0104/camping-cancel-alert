@@ -59,7 +59,7 @@
     "status": "not_open"
   },
   "gwanggyo|2026-10-04": {
-    "checked_at": "2026-10-05T05:56:50.468229+09:00",
+    "checked_at": "2026-10-05T17:27:55.807582+09:00",
     "detail": "판매 오픈 전",
     "status": "not_open"
   },
@@ -74,7 +74,7 @@
     "status": "full"
   },
   "yuldong|2026-10-04": {
-    "checked_at": "2026-10-05T05:56:37.035592+09:00",
+    "checked_at": "2026-10-05T17:27:44.930622+09:00",
     "detail": "예약 오픈 전",
     "status": "not_open"
   }
