@@ -13,7 +13,7 @@ request_delay:
 targets:
   - key: gwanggyo
     name: 광교호수공원 가족캠핑장
-    enabled: true
+    enabled: false
     fetcher: maketicket          # sites/maketicket.py 사용 (requests 기반)
     booking_url: https://forest.maketicket.co.kr/ticket/GD129
     params:

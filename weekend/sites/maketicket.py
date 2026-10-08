@@ -58,6 +58,8 @@ def fetch(target, months, delay_range=(3, 10)):
             timeout=30,
         )
         resp.raise_for_status()
+        if "<table" not in resp.text:  # 해외 IP 등에서 오는 빈 달력 — 조용히 0으로 처리하지 않음
+            raise RuntimeError("달력 표가 없는 응답 ({} bytes)".format(len(resp.text)))
         parsed = _parse_calendar(resp.text)
         if not parsed:
             log.info("[%s] %s 달력에 예약 가능 슬롯 정보 없음(미오픈/마감)", target["key"], month)
