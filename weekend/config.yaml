@@ -1,0 +1,64 @@
+# 캠핑장 빈자리 모니터링 설정
+# 대상 추가/변경은 이 파일만 수정하면 됩니다.
+
+# 알림 방식: telegram (봇 토큰/챗ID는 .env 에)
+notify:
+  method: telegram
+
+# 요청 사이 랜덤 지연(초) — 사이트 부담 방지
+request_delay:
+  min: 3
+  max: 10
+
+targets:
+  - key: gwanggyo
+    name: 광교호수공원 가족캠핑장
+    enabled: true
+    fetcher: maketicket          # sites/maketicket.py 사용 (requests 기반)
+    booking_url: https://forest.maketicket.co.kr/ticket/GD129
+    params:
+      idkey: "5M4255"
+      gd_seq: "GD129"
+    zones: []                    # 빈 리스트 = 전체 구역 감시
+    dates:
+      months: []
+      weekdays: []
+      extra: ["2026-10-09", "2026-10-10"]   # 이번주 금·토 체크인
+
+  - key: yuldong
+    name: 성남 율동공원 오토캠핑장
+    enabled: true
+    fetcher: yuldong             # sites/yuldong.py 사용 (Playwright 기반, 대기열 통과 필요)
+    booking_url: https://camping.isdc.co.kr/ydpc/camping
+    params: {}
+    zones: []
+    dates:
+      months: []
+      weekdays: []
+      extra: ["2026-10-09", "2026-10-10"]
+
+  - key: mubongsan
+    name: 무봉산 자연휴양림
+    enabled: true
+    fetcher: foresttrip          # sites/foresttrip.py 사용 (requests 기반, 로그인 불필요)
+    booking_url: https://www.foresttrip.go.kr/indvz/main.do?hmpgId=ID02030118
+    params:
+      insttId: "ID02030118"
+    zones: []
+    dates:
+      months: []
+      weekdays: []
+      extra: ["2026-10-09", "2026-10-10"]
+
+  - key: gungpyeong
+    name: 궁평오솔로캠핑장
+    enabled: true
+    fetcher: naverbooking        # sites/naverbooking.py 사용 (네이버 예약, 로그인 불필요)
+    booking_url: https://booking.naver.com/booking/3/bizes/1744745
+    params:
+      businessId: "1744745"
+    zones: []
+    dates:
+      months: []
+      weekdays: []
+      extra: ["2026-10-09", "2026-10-10"]
