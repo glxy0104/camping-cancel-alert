@@ -31,6 +31,7 @@ FETCHERS = {
     "naverbooking": naverbooking.fetch,
 }
 
+EXIT_ALL_DATES_PASSED = 10       # 남은 목표 날짜가 없을 때 종료 코드 (GitHub 루프가 보고 멈춘다)
 ERROR_ALERT_THRESHOLD = 3          # 연속 실패 N회째에 오류 알림
 ERROR_ALERT_COOLDOWN_SEC = 6 * 3600  # 오류 알림 최소 간격
 
@@ -117,13 +118,31 @@ def handle_error(target, state, exc, dry_run=False):
     errors[key] = info
 
 
+def finish(conf, state, dry_run=False):
+    """모든 목표 날짜가 지났을 때: 조회하지 않고, 종료 알림을 한 번만 보낸다."""
+    log.info("모든 목표 날짜가 지나 조회하지 않습니다. config.yaml 에 새 날짜를 넣으면 다시 시작합니다.")
+    if state["meta"].get("finished_notified") or dry_run:
+        return
+    names = ", ".join(t["name"] for t in conf["targets"] if t.get("enabled"))
+    notify.send_telegram("🛑 캠핑 알리미 종료 — 목표 날짜가 모두 지났습니다.\n({})\n새 날짜를 알려주시면 다시 켜드려요.".format(names))
+    state["meta"]["finished_notified"] = True
+    st.save_state(state)
+
+
 def main():
     parser = argparse.ArgumentParser(description="캠핑장 빈자리 모니터링")
     parser.add_argument("--no-jitter", action="store_true",
                         help="시작 시 랜덤 지연(5~60초) 생략")
     parser.add_argument("--dry-run", action="store_true",
                         help="알림 발송 없이 조회/비교만 수행")
+    parser.add_argument("--check-active", action="store_true",
+                        help="조회 없이 남은 목표 날짜가 있는지만 확인 (있으면 0, 없으면 10으로 종료)")
     args = parser.parse_args()
+
+    conf = cfg.load_config()
+    targets = [t for t in conf["targets"] if t.get("enabled") and cfg.target_dates(t["dates"])]
+    if args.check_active:
+        sys.exit(0 if targets else EXIT_ALL_DATES_PASSED)
 
     setup_logging()
     load_dotenv(BASE_DIR / ".env")
@@ -133,10 +152,12 @@ def main():
         log.info("랜덤 지연 %.0f초 후 시작 (사이트 부담 방지)", wait)
         time.sleep(wait)
 
-    conf = cfg.load_config()
     state = st.load_state()
+    if not targets:
+        finish(conf, state, dry_run=args.dry_run)
+        sys.exit(EXIT_ALL_DATES_PASSED)
+    state["meta"].pop("finished_notified", None)  # 새 날짜가 생기면 종료 알림을 다시 보낼 수 있게
 
-    targets = [t for t in conf["targets"] if t.get("enabled")]
     for i, target in enumerate(targets):
         if i > 0:
             time.sleep(random.uniform(conf.get("request_delay", {}).get("min", 3),

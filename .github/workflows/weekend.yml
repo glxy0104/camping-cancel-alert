@@ -29,11 +29,28 @@ jobs:
           python-version: "3.12"
 
       - name: 의존성 설치
-        run: |
-          pip install -r requirements.txt
-          playwright install --with-deps chromium
+        run: pip install -r requirements.txt
 
-      - name: 감시 루프 (10분 간격, 약 5시간 40분)
+      - name: 남은 목표 날짜 확인
+        id: active
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if python monitor.py --check-active; then echo "run=yes" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "run=no" >> "$GITHUB_OUTPUT"
+          # 날짜가 모두 지남 → 종료 알림 1회 보내고 상태 저장 후 끝
+          python monitor.py --no-jitter || true
+          git config user.name "camping-monitor-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/state.json && git commit -qm "weekend 종료 알림 기록" && git pull -q --rebase -X theirs && git push -q || true
+
+      - name: 브라우저 설치
+        if: steps.active.outputs.run == 'yes'
+        run: playwright install --with-deps chromium
+
+      - name: 감시 루프 (10분 간격, 약 5시간 40분, 날짜가 모두 지나면 멈춤)
+        if: steps.active.outputs.run == 'yes'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -41,12 +58,13 @@ jobs:
           end=$(( $(date +%s) + 340*60 ))
           while [ "$(date +%s)" -lt "$end" ]; do
             start=$(date +%s)
-            python monitor.py || true
+            rc=0; python monitor.py || rc=$?
             git config user.name "camping-monitor-bot"
             git config user.email "bot@users.noreply.github.com"
             git add data/state.json
             git commit -qm "weekend 상태 업데이트" || true
             git pull -q --rebase -X theirs || true
             git push -q || true
+            [ "$rc" -eq 10 ] && { echo "목표 날짜가 모두 지나 종료"; break; }
             sleep $(( 600 - ($(date +%s) - start) > 0 ? 600 - ($(date +%s) - start) : 0 ))
           done
